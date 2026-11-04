@@ -1,1 +1,195 @@
 
+// ==========================================
+// GAME CORE ENGINE - BỨC THƯ CUỐI CÙNG
+// ==========================================
+
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+document.body.appendChild(canvas);
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+document.body.style.margin = '0';
+document.body.style.overflow = 'hidden';
+document.body.style.background = '#000';
+
+// 1. TRẠNG THÁI & THÔNG SỐ NHÂN VẬT
+const player = {
+  x: 200, y: 300, vx: 0, vy: 0,
+  speed: 3.5, friction: 0.82,
+  size: 16, angle: 0
+};
+const camera = { x: player.x, y: player.y, lerp: 0.08 };
+const keys = {};
+const mouse = { x: canvas.width / 2, y: canvas.height / 2, worldX: 0, worldY: 0 };
+let currentStoryStep = 0;
+let isEnding = false;
+
+// 2. DANH SÁCH ĐỒ VẬT TƯƠNG TÁC (CỐT TRUYỆN)
+const items = [
+  { id: 1, x: 250, y: 180, radius: 25, label: "[E] Xem Đồng Hồ Dừng", name: "Đồng Hồ Cũ", text: "Đồng hồ dừng lúc 02:15... Đêm cha rời đi mà mình vẫn trách móc.", collected: false },
+  { id: 2, x: 700, y: 400, radius: 25, label: "[E] Xem Bức Ảnh", name: "Ảnh Gia Đình", text: "Mặt sau bức ảnh nhạt màu: 'Con luôn là niềm tự hào của cha'.", collected: false },
+  { id: 3, x: 450, y: 650, radius: 25, label: "[E] Đọc Bức Thư Cuối Cùng", name: "Bức Thư Cuối Cùng", text: "Gửi con... Cha xin lỗi vì những im lặng. Cha chỉ mong con được sống hạnh phúc và bình yên. Hãy tha thứ cho cha...", collected: false }
+];
+
+// 3. ÂM THANH SÂU LẮNG (Web Audio API)
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function playTone(freq, type, duration, gainVal = 0.1) {
+  if (!audioCtx) audioCtx = new AudioContext();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+// 4. LẮNG NGHE BÀN PHÍM & CHUỘT
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.toLowerCase() === 'e') checkInteraction();
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+window.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+// 5. XỬ LÝ TƯƠNG TÁC ĐỒ VẬT
+function checkInteraction() {
+  items.forEach(item => {
+    const dist = Math.hypot(player.x - item.x, player.y - item.y);
+    if (dist < 40 && !item.collected) {
+      if (item.id === currentStoryStep + 1) {
+        item.collected = true;
+        currentStoryStep++;
+        playTone(300, 'sine', 0.4, 0.2);
+        alert(`[${item.name}]\n\n"${item.text}"`);
+        if (currentStoryStep === items.length) triggerEnding();
+      } else if (item.id > currentStoryStep + 1) {
+        alert("Bạn cảm thấy chưa đến lúc để mở vật này...");
+      }
+    }
+  });
+}
+
+// 6. KẾT THÚC NHÂN VĂN & SÂU SẮC
+function triggerEnding() {
+  isEnding = true;
+  // Phát giai điệu piano hòa giải ấm áp
+  const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+  notes.forEach((freq, index) => {
+    setTimeout(() => playTone(freq, 'sine', 1.5, 0.15), index * 400);
+  });
+  setTimeout(() => {
+    alert("KẾT THÚC: SỰ THA THỨ VÀ BÌNH YÊN\n\nBóng tối tan biến. Bạn nhận ra những hồn ma u uất chỉ là nỗi dằn xé trong tâm trí. Cha chưa từng trách bạn. Hãy tiếp tục sống thật tốt!");
+  }, 2600);
+}
+
+// 7. GAME LOOP (DI CHUYỂN MƯỢT & VẼ ÁNH SÁNG ĐÈN PIN)
+function update() {
+  // Vật lý di chuyển (Acceleration & Friction)
+  let dx = 0, dy = 0;
+  if (keys['w'] || keys['arrowup']) dy -= 1;
+  if (keys['s'] || keys['arrowdown']) dy += 1;
+  if (keys['a'] || keys['arrowleft']) dx -= 1;
+  if (keys['d'] || keys['arrowright']) dx += 1;
+
+  if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+
+  player.vx = (player.vx + dx * player.speed) * player.friction;
+  player.vy = (player.vy + dy * player.speed) * player.friction;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  // Giới hạn bản đồ
+  player.x = Math.max(50, Math.min(950, player.x));
+  player.y = Math.max(50, Math.min(750, player.y));
+
+  // Camera Lerp (Mượt tuyệt đối)
+  camera.x += (player.x - camera.x) * camera.lerp;
+  camera.y += (player.y - camera.y) * camera.lerp;
+
+  // Tính góc xoay đèn pin theo chuột
+  mouse.worldX = mouse.x + (camera.x - canvas.width / 2);
+  mouse.worldY = mouse.y + (camera.y - canvas.height / 2);
+  player.angle = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  // Căn chỉnh camera theo nhân vật
+  ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
+
+  // Vẽ nền căn nhà u uất
+  ctx.fillStyle = '#111318';
+  ctx.fillRect(0, 0, 1000, 800);
+  ctx.strokeStyle = '#222630';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(0, 0, 1000, 800);
+
+  // Vẽ các đồ vật tương tác
+  items.forEach(item => {
+    ctx.fillStyle = item.collected ? '#444' : (item.id === currentStoryStep + 1 ? '#e74c3c' : '#7f8c8d');
+    ctx.beginPath();
+    ctx.arc(item.x, item.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hiển thị gợi ý phím bấm khi lại gần
+    const dist = Math.hypot(player.x - item.x, player.y - item.y);
+    if (dist < 40 && !item.collected) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(item.label, item.x - 40, item.y - 15);
+    }
+  });
+
+  // Vẽ nhân vật chính
+  ctx.fillStyle = '#3498db';
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+
+  // HE THONG BONG TOI & DEN PIN (FLASHLIGHT EFFECT)
+  if (!isEnding) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.94)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Cắt nón ánh sáng đèn pin tỏa ra từ người chơi
+    const screenPx = canvas.width / 2 + (player.x - camera.x);
+    const screenPy = canvas.height / 2 + (player.y - camera.y);
+
+    ctx.globalCompositeOperation = 'destination-out';
+    const grad = ctx.createRadialGradient(screenPx, screenPy, 20, screenPx, screenPy, 220);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(screenPx, screenPy);
+    ctx.arc(screenPx, screenPy, 220, player.angle - 0.4, player.angle + 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function gameLoop() {
+  update();
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+requestAnimationFrame(gameLoop);
